@@ -1,5 +1,6 @@
 require('dotenv').config();
 const Hapi = require('@hapi/hapi');
+const jwt = require('@hapi/jwt');
 const albums = require('./api/albums');
 const songs = require('./api/songs');
 const AlbumServices = require('./service/postgres/AlbumsService');
@@ -18,11 +19,18 @@ const AuthenticationsService = require('./service/postgres/AuthenticationsServic
 const TokenManager = require('./tokenize/TokenManager');
 const AuthenticationsValidator = require('./validator/authentications');
 
+// playlists
+const playlists = require('./api/playlists');
+const PlaylistsService = require('./service/postgres/PlaylistService');
+const PlaylistValidator = require('./validator/playlists');
+
 const init = async () => {
   const albumServices = new AlbumServices();
   const songServices = new SongServices();
-  const userServices = new UsersService();
+  const usersService = new UsersService();
   const authenticationsService = new AuthenticationsService();
+  const playlistsService = new PlaylistsService();
+
   const server = Hapi.server({
     port: process.env.PORT,
     host: process.env.HOST,
@@ -34,6 +42,36 @@ const init = async () => {
   });
 
   await server.register([
+    {
+      plugin: jwt,
+    },
+  ]);
+
+  // mendefinisikan strategy autentikasi jwt
+  server.auth.strategy('playlist_jwt', 'jwt', {
+    keys: process.env.ACCESS_TOKEN_KEY,
+    verify: {
+      aud: false,
+      iss: false,
+      sub: false,
+      maxAgeSec: process.env.ACCESS_TOKEN_AGE,
+    },
+    validate: (artifacts) => ({
+      isValid: true,
+      credentials: {
+        id: artifacts.decoded.payload.id,
+      },
+    }),
+  });
+
+  await server.register([
+    {
+      plugin: playlists,
+      options: {
+        service: playlistsService,
+        validator: PlaylistValidator,
+      },
+    },
     {
       plugin: albums,
       options: {
@@ -51,7 +89,7 @@ const init = async () => {
     {
       plugin: users,
       options: {
-        service: userServices,
+        service: usersService,
         validator: UsersValidator,
       },
     },
@@ -59,7 +97,7 @@ const init = async () => {
       plugin: authentications,
       options: {
         authenticationsService,
-        userServices,
+        usersService,
         tokenManager: TokenManager,
         validator: AuthenticationsValidator,
       },
