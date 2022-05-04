@@ -1,6 +1,8 @@
 require('dotenv').config();
 const Hapi = require('@hapi/hapi');
 const jwt = require('@hapi/jwt');
+const path = require('path');
+const Inert = require('@hapi/inert');
 const albums = require('./api/albums');
 const songs = require('./api/songs');
 const AlbumServices = require('./service/postgres/AlbumsService');
@@ -29,12 +31,27 @@ const _exports = require('./api/exports');
 const ProducerService = require('./service/rabbitmq/ProducerService');
 const ExportsValiadator = require('./validator/exports');
 
+// uploads
+const uploads = require('./api/uploads');
+const StorageService = require('./service/storage/StorageService');
+const UploadsValidator = require('./validator/uploads');
+
+// albums
+const albumslikes = require('./api/albumlikes');
+const AlbumsLikeService = require('./service/postgres/AlbumsLikeService');
+
+// cache
+const CahceService = require('./service/redis/CahceService');
+
 const init = async () => {
+  const cahceService = new CahceService();
   const albumServices = new AlbumServices();
   const songServices = new SongServices();
   const usersService = new UsersService();
   const authenticationsService = new AuthenticationsService();
   const playlistsService = new PlaylistsService();
+  const albumLikeService = new AlbumsLikeService(cahceService);
+  const storageService = new StorageService(path.resolve(__dirname, 'api/uploads/file/images'));
 
   const server = Hapi.server({
     port: process.env.PORT,
@@ -49,6 +66,9 @@ const init = async () => {
   await server.register([
     {
       plugin: jwt,
+    },
+    {
+      plugin: Inert,
     },
   ]);
 
@@ -111,7 +131,21 @@ const init = async () => {
       plugin: _exports,
       options: {
         service: ProducerService,
-        validator: ExportsValiadator
+        validator: ExportsValiadator,
+        playlistsService,
+      },
+    },
+    {
+      plugin: uploads,
+      options: {
+        service: storageService,
+        validator: UploadsValidator,
+      },
+    },
+    {
+      plugin: albumslikes,
+      options: {
+        service: albumLikeService,
       },
     },
   ]);
